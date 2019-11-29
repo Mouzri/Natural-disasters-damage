@@ -1,0 +1,175 @@
+---
+title: "Devastating natural disasters across the US"
+author: "Dinov Berra"
+date: "11/6/2019"
+output: html_document
+---
+## Synopsis  
+The purpose of this analysis is to explore the U.S. National Oceanic and Atmospheric Administration's data,
+in order to determine which natural disasters, among the records, are the most devastating. Such a study will be mainly based on specific variables that will allow us to measure the damages in the aftermath. As we dig further, more clarification will be given on different elements involved to make the analysis _(variable, operations on these variables....etc)_.
+
+## Data processing
+
+As mentionned before, the data tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. More than 9 hundred thousand disaster has been recorded, each with different measurements, and for more description, the reader can refer to the full description that can be found [here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).
+The full data is publicaly available and can be downloaded from [this link](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+
+Without any further delay, let's load the data.
+
+```{r,cache=TRUE}
+#downloading the data
+if (!file.exists("data")) {dir.create("data")
+    myURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+    download.file(url = myURL,destfile = "data/data.zip")}
+
+#reading the data
+hdt <- read.csv(file = "data/data.zip",header = TRUE,sep = ",",stringsAsFactors = FALSE)
+#to get a sense of the data we use the str function
+str(hdt)
+```
+The data is big. However since the variable of interest will be restricted to those describing the damages, fatalities, and injuries, we're going to select those ones only.
+```{r}
+UsflDT <- subset(hdt,select = c("STATE","EVTYPE","LENGTH","WIDTH","F","MAG","FATALITIES","INJURIES",
+                      grep(pattern = "ropdmg|ROPDMG",x =names(hdt) ,value = TRUE)))
+#the last function 'grep', will bring the 4 columns with "ropdmg" pattern, which are: cropdmg, cropdmgexp,propdmg,propdmgexp
+UsflDT$EVTYPE <-tolower(UsflDT$EVTYPE)
+```
+In addition the loaded data, we need to load the **names** of the different natural disasters, so that we can use them later while trying to make the necessary manipulations (subsetting for instance from the _evtype_ column in the data). Those references were copied in a text file via a "copy paste" from the pdf file.
+```{r}
+ref1 <- scan("cat.txt",what = "character",sep =".")#the sep ="." is added to load it a one char
+ref2 <- strsplit(split = " +[Z|C|M]+ ",x = ref1)#since the seperation is gonna be the Z M C letters, we simpy use them as separators
+ref3 <- as.character(ref2[[1]])
+ref4 <- sort(tolower(gsub(pattern = "^ *|[(<= *)]|( *)",replacement = " ",x = ref3)))
+eventref <- gsub("^ ","",ref4)#deleting space from the beginings
+eventreference1 <- gsub("/|-"," ",eventref)#to delete non alphanumericals
+print(eventreference1)
+```
+Now, let's subset from our data (hdt), the exact matching of the natural disasters as named on the event refrence:
+```{r}
+index <- UsflDT$EVTYPE%in%unique(eventreference1)
+nw_dt <- UsflDT[index,]
+head(nw_dt)
+```
+
+## Results  
+### On public health  
+Now we can tackle the new data in orther to determine which event has been the most dangerous on the US population:
+```{r}
+Usldt2 <- subset(nw_dt,FATALITIES>0 & INJURIES>0)# No need for the rows with falities or injuries  equal to zero. It will allow us to drastically reduce the size of data.
+Ordt1 <- aggregate(INJURIES~EVTYPE,data = Usldt2, sum)
+Ordt2 <- aggregate(FATALITIES~EVTYPE,data = nw_dt, sum)
+fn_df1 <- data.frame(Ordt1[order(Ordt1$INJURIES,decreasing = TRUE),][,1:2], row.names = 1:nrow(Ordt1))
+fn_df2 <- data.frame(Ordt2[order(Ordt2$FATALITIES,decreasing = TRUE),][,1:2], row.names = 1:nrow(Ordt2))
+head(fn_df2);head(fn_df1)
+```
+By far, *tornados* are on the top of the list, and can be considered as he most dangerous on the population's safety. The following figures, describes the totals injuries and fatalities of each event:
+```{r}
+oldpar <- par()
+par(mfrow=c(1,2),oma=c(0,1,3,0))
+barplot(fn_df1$INJURIES,names.arg = fn_df1$EVTYPE,las=2,
+        col = "darkblue",main = "Total Injuries across the US",
+        ylim = c(0,60000),crt=90,cex.names = .9,font.main=4)
+barplot(fn_df2$FATALITIES,names.arg = fn_df2$EVTYPE,las=2,
+        col = "darkblue",main = "Total Fatalities across the US",
+        ylim = c(0,6000),font.main=4)
+
+mtext("Most harmful events across the US", 
+      outer = TRUE,font = 4,cex=1.3)
+
+```  
+
+### Economic consequences  
+The same approach will be used to determine which disaster has the biggest economic consequences.  
+
+1. Subsetting the data
+```{r}
+Usldt3 <- subset(nw_dt,PROPDMG>0 | CROPDMG>0)
+colnames(Usldt3) <- tolower(names(Usldt3))
+
+Usldt3$propdmgexp <- tolower(Usldt3$propdmgexp)
+Usldt3$cropdmgexp <- tolower(Usldt3$cropdmgexp)
+head(Usldt3)
+```
+2. Cleaning the data  
+As described by the National Climatic Data Center Storm Events, the economic damages are measured in terms of dollars. The variable with the "exp" extensions, summarizes the units for the crop/prop variables:  
+*"h" hundreds.  
+*"k" stands for thousands.  
+*"m" for millions.  
+*"b" billions.  
+*"","-","?" are for the singular units.  
+*0 to 8: are considered to be the tenths units.
+
+Therefore, and for the purpose of this analysis, we're going to convert different measurments to the billion unit.  
+3. The property damage  
+
+```{r}
+
+index1 <- which(!is.na(Usldt3$propdmgexp) &Usldt3$propdmgexp=="m")
+index2 <- which(!is.na(Usldt3$propdmgexp) &Usldt3$propdmgexp=="k")
+index3 <- which(!is.na(Usldt3$propdmgexp) &Usldt3$propdmgexp=="h")
+index4 <- which(!is.na(Usldt3$propdmgexp) &Usldt3$propdmgexp%in%c("","-","?"))
+index5 <- which(!is.na(Usldt3$propdmgexp) &Usldt3$propdmgexp%in%0:8)
+
+
+Usldt3[index1,"propdmg"] <- Usldt3[index1,"propdmg"]/10^3
+Usldt3[index2,"propdmg"] <- Usldt3[index2,"propdmg"]/10^6
+Usldt3[index3,"propdmg"] <- Usldt3[index3,"propdmg"]/10^7
+Usldt3[index4,"propdmg"] <- Usldt3[index4,"propdmg"]/10^9
+Usldt3[index5,"propdmg"] <- Usldt3[index5,"propdmg"]/10^8
+```
+
+Once done, we can now split the data based on the event type, order it, take three digits as signification, and finally store everything in a new final data frame.
+
+```{r}
+Usfldt3 <- Usldt3[,c("evtype","propdmg","propdmgexp")]
+resh_dt1 <- aggregate(propdmg~evtype,Usfldt3,sum)
+or_resh_dt1 <- resh_dt1[order(resh_dt1$propdmg,decreasing = TRUE),]
+or_resh_dt2 <- transform(or_resh_dt1, propdmg=signif(propdmg,digits = 4))
+finl_dt <- data.frame(or_resh_dt2,row.names = 1:nrow(or_resh_dt2))
+head(finl_dt)
+```
+
+4. The crop damage
+The same of what above applies, but this tiome to the _*crop*_ vraiables:
+```{r}
+index5 <- which(!is.na(Usldt3$cropdmgexp) &Usldt3$cropdmgexp=="m")
+index6 <- which(!is.na(Usldt3$cropdmgexp) &Usldt3$cropdmgexp=="k")
+index7 <- which(!is.na(Usldt3$cropdmgexp) &Usldt3$cropdmgexp=="h")
+index8 <- which(!is.na(Usldt3$cropdmgexp) &Usldt3$cropdmgexp%in%c("","-","?"))
+index9 <- which(!is.na(Usldt3$cropdmgexp) &Usldt3$cropdmgexp%in%0:8)
+
+
+
+Usldt3[index5,"cropdmg"] <- Usldt3[index5,"cropdmg"]/10^4
+Usldt3[index6,"cropdmg"] <- Usldt3[index6,"cropdmg"]/10^6
+Usldt3[index7,"cropdmg"] <- Usldt3[index7,"cropdmg"]/10^7
+Usldt3[index8,"cropdmg"] <- Usldt3[index8,"cropdmg"]/10^9
+Usldt3[index9,"cropdmg"] <- Usldt3[index9,"cropdmg"]/10^8
+
+Usfldt4 <- Usldt3[,c("evtype","cropdmg","cropdmgexp")]
+resh_dt2 <- aggregate(cropdmg~evtype,Usfldt4,sum)
+or_resh_dt3 <- resh_dt2[order(resh_dt2$cropdmg,decreasing = TRUE),]
+or_resh_dt4 <- transform(or_resh_dt3, cropdmg=signif(cropdmg,digits = 4))
+finl_dt2 <- data.frame(or_resh_dt4,row.names = 1:nrow(or_resh_dt4))
+
+head(finl_dt2)
+```
+
+
+finally, let's illustrate this with convenient plots:  
+```{r}
+par(mfrow=c(1,2),oma=c(0,0,3,0))
+barplot(finl_dt2$cropdmg, names.arg = finl_dt2$evtype,main = "Total amount of property damage",
+        las=2,col="gold",font.main=3)
+barplot(finl_dt$propdmg, names.arg = finl_dt$evtype,las=2,main="Total amount of crop damage",
+        col="gold", font.main=3)
+
+mtext("Damage in terms of billion dollars due to natural disaster", 
+      outer = TRUE,font = 2,cex=1.3)
+
+```
+
+
+## Limitaions of the analysis  
+
+When we selected from the data the events based on the reference document, we took only the exact match of natural disasters' names. However there are still other events that could have been taken into account. They were skipped only because the purpose of the assignment was to make a reproducible research paper. More sophostacated approaches could have been taken instead.
+
