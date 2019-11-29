@@ -1,6 +1,6 @@
 ---
 title: "Devastating natural disasters across the US"
-author: "Dinov Berra"
+author: "N.Berra"
 date: "11/6/2019"
 output: html_document
 ---
